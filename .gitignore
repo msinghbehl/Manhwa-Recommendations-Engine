@@ -1,0 +1,19 @@
+# Secrets & credentials
+.env
+
+# Documentation (internal only)
+TECH_FLUENCY.md
+
+# Python environment
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Scraped data — contains Reddit usernames, comment bodies, personal data
+data/raw/
+data/processed/
+data/logs/
+
+# macOS
+.DS_Store

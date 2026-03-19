@@ -1,0 +1,7 @@
+praw
+python-dotenv
+tqdm
+pandas
+rapidfuzz   # optional but recommended for better alias merging
+streamlit
+anthropic   # optional: AI sentiment validation in extract.py (requires ANTHROPIC_API_KEY in .env)
