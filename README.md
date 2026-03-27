@@ -198,9 +198,9 @@ Append-friendly and crash-safe. If the collector dies mid-run, everything writte
 
 ## Background
 
-I'm a Technical Program Manager who decided to build something real to develop hands-on skills in Python, APIs, and AI integration. This project lets me apply concepts I'd managed in engineering teams — data pipelines, API rate limiting, parallel processing, LLM integration — by building them myself from scratch.
+I'm a Technical Program Manager who decided to build something real to develop hands-on skills in Python, APIs, and AI integration. This project lets me apply concepts I want to understand — data pipelines, API rate limiting, parallel processing, LLM integration — by building them myself from scratch.
 
-It also happens to solve a problem I actually have: there are thousands of Reddit threads about manhwa recommendations and no good way to surface the signal from the noise. This pipeline does that automatically.
+It also happens to solve a problem I actually have as someone who loves reading manhwa: there are thousands of Reddit threads about manhwa recommendations and no good way to surface the signal from the noise. This pipeline does that automatically.
 
 ---
 
