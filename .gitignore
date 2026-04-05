@@ -3,6 +3,7 @@
 
 # Documentation (internal only)
 TECH_FLUENCY.md
+ARCHITECTURE.md
 
 # Python environment
 .venv/

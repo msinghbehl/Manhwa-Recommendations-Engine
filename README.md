@@ -77,6 +77,7 @@ where:
 | Layer | Technology |
 |---|---|
 | Reddit API | [PRAW](https://praw.readthedocs.io/) (Python Reddit API Wrapper) |
+| HTTP client | `requests` (exponential backoff + host allowlist in `utils_http.py`) |
 | Data storage | JSONL (raw) + CSV (processed) |
 | Text processing | `re`, `rapidfuzz` |
 | Data analysis | `pandas` |
@@ -90,7 +91,7 @@ where:
 
 ### Prerequisites
 
-- Python 3.9+
+- Python 3.10+
 - A Reddit account with a [script-type app](https://www.reddit.com/prefs/apps) (free)
 - An Anthropic API key (optional — only needed for AI sentiment labels)
 
@@ -158,11 +159,12 @@ manhwa-recommendations-reddit/
 ├── .env.example            # Template — copy to .env and fill in your credentials
 ├── requirements.txt        # pip dependencies
 │
-├── config.py               # Subreddits, query terms, shared paths
+├── config.py               # Subreddits, query terms, shared paths, logging setup
 ├── reddit_client.py        # PRAW auth + search_posts() + fetch_comments()
+├── utils_http.py           # HTTP GET with exponential backoff (for direct HTTP calls)
 ├── collect.py              # Step 1: scrape Reddit → data/raw/YYYY-MM-DD/
 ├── extract.py              # Step 2: extract, score, rank → data/processed/YYYY-MM-DD/
-├── validate.py             # Step 2.5: AI sentiment classification via Claude
+├── validate.py             # Step 2.5: AI sentiment classification via Claude (auto-runs from extract.py)
 ├── app.py                  # Step 3: Streamlit dashboard
 └── data/
     ├── blacklist.txt       # Phrases to always reject (generic words, stop phrases)
@@ -201,6 +203,15 @@ Append-friendly and crash-safe. If the collector dies mid-run, everything writte
 I'm a Technical Program Manager who decided to build something real to develop hands-on skills in Python, APIs, and AI integration. This project let me apply concepts I'd managed in engineering teams — data pipelines, API rate limiting, parallel processing, LLM integration — by building them myself from scratch.
 
 It also happens to solve a problem I actually have: there are thousands of Reddit threads about manhwa recommendations and no good way to surface the signal from the noise. This pipeline does that automatically.
+
+---
+
+## Documentation
+
+| Document | Audience | What it covers |
+|---|---|---|
+| [TECH_FLUENCY.md](TECH_FLUENCY.md) | Junior engineers, new contributors | What the project does, plain-English design rationale, full pipeline walkthrough, setup, data formats, known quirks |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Engineers modifying the codebase | Library choices and trade-offs, module internals, algorithms, data model, concurrency, security architecture, performance characteristics |
 
 ---
 
