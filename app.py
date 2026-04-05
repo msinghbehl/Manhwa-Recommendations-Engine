@@ -12,7 +12,6 @@ To run locally (in the project root):
 """
 from __future__ import annotations
 import random
-import re
 from pathlib import Path
 from datetime import datetime, timezone
 
@@ -117,13 +116,8 @@ if has_sentiment:
 
 filtered = df[df["mentions"] >= min_mentions].copy()
 if search_text:
-    try:
-        filtered = filtered[filtered["title"].str.contains(
-            search_text, case=False, na=False, regex=True)]
-    except re.error:
-        st.warning("Invalid search pattern — using plain text search instead.")
-        filtered = filtered[filtered["title"].str.contains(
-            search_text, case=False, na=False, regex=False)]
+    filtered = filtered[filtered["title"].str.contains(
+        search_text, case=False, na=False, regex=False)]
 if has_sentiment and sentiment_filter:
     filtered = filtered[filtered["ai_sentiment"].isin(sentiment_filter)]
 

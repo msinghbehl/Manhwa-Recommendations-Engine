@@ -7,15 +7,11 @@ from praw.models import Comment
 def get_reddit() -> praw.Reddit:
     client_id = os.environ.get("REDDIT_CLIENT_ID")
     client_secret = os.environ.get("REDDIT_CLIENT_SECRET")
-    username = os.environ.get("REDDIT_USERNAME")
-    password = os.environ.get("REDDIT_PASSWORD")
     user_agent = os.environ.get("USER_AGENT", "ManhwaRecBot/1.0")
 
     missing = [k for k, v in {
         "REDDIT_CLIENT_ID": client_id,
         "REDDIT_CLIENT_SECRET": client_secret,
-        "REDDIT_USERNAME": username,
-        "REDDIT_PASSWORD": password,
     }.items() if not v]
     if missing:
         raise EnvironmentError(
@@ -23,11 +19,11 @@ def get_reddit() -> praw.Reddit:
             "Check your .env file."
         )
 
+    # Application-only OAuth — read-only access to public subreddits.
+    # No username/password needed; the pipeline never writes to Reddit.
     return praw.Reddit(
         client_id=client_id,
         client_secret=client_secret,
-        username=username,
-        password=password,
         user_agent=user_agent,
     )
 

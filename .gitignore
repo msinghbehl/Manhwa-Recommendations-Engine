@@ -7,9 +7,12 @@ ARCHITECTURE.md
 
 # Python environment
 .venv/
+venv/
+env/
 __pycache__/
 *.pyc
 *.pyo
+*.log
 
 # Scraped data — contains Reddit usernames, comment bodies, personal data
 data/raw/
