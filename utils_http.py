@@ -1,20 +1,30 @@
 # utils_http.py
-import time
-import sys
 import json
+import logging
 import random
+import time
+from urllib.parse import urlparse
+
 import requests
-from typing import Optional
+
 from config import USER_AGENT, REQUEST_TIMEOUT
 
 HEADERS = {"User-Agent": USER_AGENT}
 
+# Allowlist of permitted hosts — prevents SSRF if a URL ever comes from external data
+_ALLOWED_HOSTS = {"www.reddit.com", "oauth.reddit.com", "api.reddit.com"}
 
-def get_json(url: str, params: dict, max_retries: int = 3, base_sleep: float = 1.0) -> Optional[dict]:
+
+def get_json(url: str, params: dict, max_retries: int = 3, base_sleep: float = 1.0) -> dict | None:
     """
     GET JSON with polite exponential backoff.
     Returns dict or None if ultimately failed / non-JSON.
     """
+    parsed = urlparse(url)
+    if parsed.hostname not in _ALLOWED_HOSTS:
+        logging.error("Blocked request to disallowed host: %s", parsed.hostname)
+        return None
+
     for attempt in range(1, max_retries + 1):
         try:
             resp = requests.get(url, params=params,
@@ -22,9 +32,8 @@ def get_json(url: str, params: dict, max_retries: int = 3, base_sleep: float = 1
             status = resp.status_code
 
             if status == 429:  # rate limit
-                wait = base_sleep * (1.5 ** attempt) + random.uniform(0, 0.5)
-                print(
-                    f"[WARN] 429 rate limit. Sleeping {wait:.1f}s", file=sys.stderr)
+                wait = base_sleep * (1.5 ** attempt) + random.uniform(0, 0.5)  # nosec B311
+                logging.warning("429 rate limit. Sleeping %.1fs", wait)
                 time.sleep(wait)
                 continue
 
@@ -36,10 +45,9 @@ def get_json(url: str, params: dict, max_retries: int = 3, base_sleep: float = 1
             return resp.json()
 
         except (requests.RequestException, ValueError, json.JSONDecodeError) as e:
-            wait = base_sleep * (1.5 ** attempt) + random.uniform(0, 0.5)
-            print(
-                f"[WARN] Attempt {attempt} failed ({e}). Sleeping {wait:.1f}s", file=sys.stderr)
+            wait = base_sleep * (1.5 ** attempt) + random.uniform(0, 0.5)  # nosec B311
+            logging.warning("Attempt %d failed (%s). Sleeping %.1fs", attempt, e, wait)
             time.sleep(wait)
 
-    print(f"[ERROR] Giving up on {url}", file=sys.stderr)
+    logging.error("Giving up on %s", url)
     return None

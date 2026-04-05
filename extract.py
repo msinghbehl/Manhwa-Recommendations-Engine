@@ -1,15 +1,20 @@
 # extract.py
+import argparse
+import datetime
 import json
+import logging
 import math
 import os
 import re
 import string
-import datetime
-import argparse
-from pathlib import Path
 from collections import defaultdict
+from pathlib import Path
+from typing import Any, Iterator
+
 import pandas as pd
 from dotenv import load_dotenv
+
+from validate import ai_validate
 
 load_dotenv()
 
@@ -23,16 +28,16 @@ LIST_PREFIX = re.compile(r"^[\-\*\•\d\)\(]+\s*")
 META_PREFIX = re.compile(
     r"(?i)^(best|plan|s\s*tier|finished|completed|ongoing|dropped|status|genre|rating|score)[:\-\s]+")
 CHAPTER_RE = re.compile(r"^ch(?:apter)?\s*\d+", re.I)
-MARK_RE = re.compile(r"(?:\*\*|\*|['\"“”])([^'\n\*]{2,90})(?:\*\*|\*|['\"“”])")
+MARK_RE = re.compile(r"""(?:\*\*|\*|['\u201c\u201d"])([^'\n\*]{2,90})(?:\*\*|\*|['\u201c\u201d"])""")
 
 
-def load_list(path: Path) -> set:
+def load_list(path: Path) -> set[str]:
     if not path.exists():
         return set()
-    return {l.strip() for l in path.read_text(encoding="utf-8").splitlines() if l.strip()}
+    return {line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()}
 
 
-def parse_args():
+def parse_args() -> argparse.Namespace:
     ap = argparse.ArgumentParser(
         description="Extract manhwa titles from raw Reddit comments")
     ap.add_argument(
@@ -47,14 +52,14 @@ def get_latest_date_dir() -> str:
     return max(dated, key=lambda p: p.stat().st_mtime).name
 
 
-def read_jsonl(path: Path):
+def read_jsonl(path: Path) -> Iterator[dict[str, Any]]:
     with open(path, "r", encoding="utf-8") as f:
         for line in f:
             yield json.loads(line)
 
 
-def extract_candidates(text: str, whitelist: set, blacklist: set):
-    cands = set()
+def extract_candidates(text: str, whitelist: set[str], blacklist: set[str]) -> set[str]:
+    cands: set[str] = set()
     for raw in MARK_RE.findall(text):
         cleaned = clean_candidate(raw, whitelist, blacklist)
         if cleaned:
@@ -74,17 +79,13 @@ URL_RE = re.compile(r"https?://", re.I)
 EMOJI_RE = re.compile(r"^[\W_]+$")
 
 
-def clean_candidate(text: str, whitelist: set, blacklist: set) -> str | None:
-    text = text.strip(string.punctuation + " \u200b")
-
+def clean_candidate(text: str, whitelist: set[str], blacklist: set[str]) -> str | None:
     text = text.strip(string.punctuation + " \u200b")
     if not text or URL_RE.search(text):
         return None
     if EMOJI_RE.match(text):          # all emoji / symbols
         return None
     if re.search(r"(?i)\bremind\s*me\b", text):
-        return None
-    if not text:
         return None
     if text in whitelist:
         return text
@@ -120,21 +121,23 @@ def canon_key(t: str) -> str:
 
 
 def fuzzy_merge(rows: pd.DataFrame, threshold: int = 92) -> pd.DataFrame:
+    # O(n²) — acceptable for typical scrape sizes (< 500 titles)
     try:
         from rapidfuzz import fuzz
     except ImportError:
         return rows
-    used = set()
+    used: set[int] = set()
     out = []
     titles = list(rows["title"])
     for i, t in enumerate(titles):
         if i in used:
             continue
+        used.add(i)  # mark primary as used so it can't also appear as a secondary
         idxs = [i]
         for j in range(i + 1, len(titles)):
             if j in used:
                 continue
-            if fuzz.token_sort_ratio(titles[i].lower(), titles[j].lower()) >= threshold:
+            if fuzz.token_sort_ratio(t.lower(), titles[j].lower()) >= threshold:
                 idxs.append(j)
                 used.add(j)
         sub = rows.iloc[idxs]
@@ -148,10 +151,23 @@ def fuzzy_merge(rows: pd.DataFrame, threshold: int = 92) -> pd.DataFrame:
     return pd.DataFrame(out)
 
 
-def main():
+def main() -> None:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        handlers=[logging.StreamHandler()],
+    )
     args = parse_args()
     raw_date = args.date or get_latest_date_dir()
-    raw_dir = RAW_ROOT / raw_date
+
+    # Guard against path traversal via --date argument
+    _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+    if args.date and not _DATE_RE.match(args.date):
+        raise SystemExit(f"Invalid date format: {args.date!r}. Expected YYYY-MM-DD.")
+    raw_dir = (RAW_ROOT / raw_date).resolve()
+    if not str(raw_dir).startswith(str(RAW_ROOT.resolve())):
+        raise SystemExit("Path traversal attempt detected in --date argument.")
+
     comments_path = raw_dir / "comments.jsonl"
     processed_dir = Path("data/processed") / raw_date
     processed_dir.mkdir(parents=True, exist_ok=True)
@@ -164,31 +180,39 @@ def main():
 
     # Load post scores for quality weighting
     posts_path = raw_dir / "posts.jsonl"
-    post_score_lookup = {}
+    post_score_lookup: dict[str, int] = {}
     if posts_path.exists():
         for prow in read_jsonl(posts_path):
             pid = prow.get("id")
             if pid:
                 post_score_lookup[pid] = max(0, prow.get("score", 0))
 
-    counts = defaultdict(float)
-    commenters = defaultdict(set)
-    subs = defaultdict(set)
-    snippets = defaultdict(list)  # canon_key → comment bodies (for AI validation)
+    counts: defaultdict[str, float] = defaultdict(float)
+    commenters: defaultdict[str, set[str]] = defaultdict(set)
+    subs: defaultdict[str, set[str]] = defaultdict(set)
+    snippets: defaultdict[str, list[str]] = defaultdict(list)  # canon_key → comment bodies (for AI validation)
 
     total_comments = total_cands = total_kept = 0
-    now_ts = datetime.datetime.utcnow().timestamp()
+    now_ts = datetime.datetime.now(datetime.timezone.utc).timestamp()
 
-    for row in read_jsonl(comments_path):
+    for raw_row in read_jsonl(comments_path):
         total_comments += 1
-        body = row.get("body") or ""
-        author = row.get("author") or "unknown"
-        subreddit = row.get("subreddit") or "unknown"
+        # Validate and coerce fields — guards against malformed or tampered JSONL
+        try:
+            body = str(raw_row.get("body") or "")
+            author = str(raw_row.get("author") or "unknown")
+            subreddit = str(raw_row.get("subreddit") or "unknown")
+            _post_id_raw = raw_row.get("post_id")
+            _post_id = str(_post_id_raw) if _post_id_raw is not None else ""
+            created_utc = float(raw_row["created_utc"])
+        except (KeyError, TypeError, ValueError):
+            logging.warning("Skipping malformed comment row: %s", raw_row)
+            continue
 
         # Per-mention weight: recency decay × post quality
-        days_old = max(0, (now_ts - (row.get("created_utc") or now_ts)) / 86400)
+        days_old = max(0, (now_ts - created_utc) / 86400)
         decay = DECAY_BASE ** days_old
-        post_score = post_score_lookup.get(row.get("post_id"), 0)
+        post_score = post_score_lookup.get(_post_id, 0) if _post_id else 0
         post_weight = math.log1p(post_score) if post_score > 0 else 1.0
         mention_weight = decay * post_weight
 
@@ -216,8 +240,8 @@ def main():
 
     raw_csv = processed_dir / "raw_counts.csv"
     df.to_csv(raw_csv, index=False)
-    print(df.head(20).to_string(index=False))
-    print(f"\nSaved → {raw_csv}")
+    logging.info("Top 20 raw candidates:\n%s", df.head(20).to_string(index=False))
+    logging.info("Saved → %s", raw_csv)
 
     # ----- CLEAN & MERGE -----
     # 1) first-pass by canonical key (blacklist already filtered in clean_candidate)
@@ -242,8 +266,7 @@ def main():
 
     # 5) optional AI sentiment validation (runs only if ANTHROPIC_API_KEY is set)
     if os.getenv("ANTHROPIC_API_KEY"):
-        from validate import ai_validate
-        print(f"\n[AI] Validating top {min(150, len(clean))} candidates with Claude...")
+        logging.info("Validating top %d candidates with Claude...", min(150, len(clean)))
         candidates_with_snippets = {
             row["title"]: snippets.get(canon_key(row["title"]), [])
             for _, row in clean.iterrows()
@@ -251,17 +274,18 @@ def main():
         labels = ai_validate(candidates_with_snippets)
         if labels:
             clean["ai_sentiment"] = clean["title"].map(labels).fillna("unknown")
-            print(f"[AI] Labeled {len(labels)} titles — noise/negative will appear flagged in dashboard")
+            logging.info("Labeled %d titles — noise/negative will appear flagged in dashboard", len(labels))
         else:
-            print("[AI] Validation skipped or failed — no labels added")
+            logging.info("AI validation skipped or failed — no labels added")
 
     out_csv = processed_dir / "clean_counts.csv"
     clean.to_csv(out_csv, index=False)
-    print("\nTop 20 clean:\n", clean.head(20).to_string(index=False))
-    print(f"\nSaved → {out_csv}")
-
-    print(
-        f"\n[STATS] comments: {total_comments}, candidates: {total_cands}, kept(after dedup): {total_kept}")
+    logging.info("Top 20 clean:\n%s", clean.head(20).to_string(index=False))
+    logging.info("Saved → %s", out_csv)
+    logging.info(
+        "comments: %d, candidates: %d, kept(after dedup): %d",
+        total_comments, total_cands, total_kept,
+    )
 
 
 if __name__ == "__main__":

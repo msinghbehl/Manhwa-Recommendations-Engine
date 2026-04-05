@@ -1,7 +1,8 @@
-praw
-python-dotenv
-tqdm
-pandas
-rapidfuzz   # optional but recommended for better alias merging
-streamlit
-anthropic   # optional: AI sentiment validation in extract.py (requires ANTHROPIC_API_KEY in .env)
+praw>=7.8.1
+python-dotenv>=1.2.2
+tqdm>=4.67.3
+pandas>=2.3.3
+rapidfuzz>=3.0.0   # optional but recommended for better alias merging
+streamlit>=1.55.0
+anthropic>=0.87.0  # 0.87.0 fixes CVE-2026-34450 and CVE-2026-34452
+requests>=2.33.0   # 2.33.0 fixes CVE-2026-25645

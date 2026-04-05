@@ -11,8 +11,8 @@ To run locally (in the project root):
     streamlit run app.py
 """
 from __future__ import annotations
-import os
 import random
+import re
 from pathlib import Path
 from datetime import datetime, timezone
 
@@ -31,7 +31,7 @@ st.set_page_config(page_title="Trending Manhwa on Reddit", layout="wide")
 
 def latest_clean_csv() -> Path | None:
     """Return path to the most recent clean_counts.csv (or None)."""
-    files = sorted(DATA_ROOT.glob("*/clean_counts.csv"), key=os.path.getmtime)
+    files = sorted(DATA_ROOT.glob("*/clean_counts.csv"), key=lambda p: p.stat().st_mtime)
     return files[-1] if files else None
 
 
@@ -53,6 +53,7 @@ def load_df(path: Path) -> pd.DataFrame:
     return df
 
 
+@st.cache_data
 def get_historical_series(title: str, days: int = 30) -> pd.Series:
     """Return mentions per day for the past `days` (filled with 0)."""
     cutoff = datetime.now(timezone.utc).date().toordinal() - days
@@ -116,8 +117,13 @@ if has_sentiment:
 
 filtered = df[df["mentions"] >= min_mentions].copy()
 if search_text:
-    filtered = filtered[filtered["title"].str.contains(
-        search_text, case=False, na=False)]
+    try:
+        filtered = filtered[filtered["title"].str.contains(
+            search_text, case=False, na=False, regex=True)]
+    except re.error:
+        st.warning("Invalid search pattern — using plain text search instead.")
+        filtered = filtered[filtered["title"].str.contains(
+            search_text, case=False, na=False, regex=False)]
 if has_sentiment and sentiment_filter:
     filtered = filtered[filtered["ai_sentiment"].isin(sentiment_filter)]
 

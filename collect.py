@@ -1,14 +1,16 @@
 # collect.py
+import argparse
 import json
+import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+
 from tqdm import tqdm
-import argparse
 
 from config import (
     SUBREDDITS, QUERY_TERMS, DEFAULT_DAYS,
-    POSTS_PATH, COMMENTS_PATH, RAW_DIR
+    POSTS_PATH, COMMENTS_PATH, RAW_DIR, init_dirs,
 )
 from reddit_client import get_reddit, search_posts, fetch_comments
 
@@ -21,12 +23,12 @@ def write_jsonl(path: Path, rows: list[dict]) -> None:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
 
 
-def run_collection(days: int, post_limit: int = 60, comment_limit: int = 40):
-    RAW_DIR.mkdir(parents=True, exist_ok=True)
+def run_collection(days: int, post_limit: int = 60, comment_limit: int = 40) -> None:
+    init_dirs()
 
-    print(f"[INFO] Collecting raw data for {days} day window into {RAW_DIR}")
+    logging.info("Collecting raw data for %d day window into %s", days, RAW_DIR)
     reddit = get_reddit()
-    all_posts = {}
+    all_posts: dict[str, dict] = {}
     total_comments = 0
     skipped = 0
 
@@ -41,19 +43,25 @@ def run_collection(days: int, post_limit: int = 60, comment_limit: int = 40):
             time.sleep(0.2)  # tiny politeness delay (optional)
 
     posts_list = list(all_posts.values())
-    print(f"[INFO] Unique posts collected: {len(posts_list)}")
+    logging.info("Unique posts collected: %d", len(posts_list))
     write_jsonl(POSTS_PATH, posts_list)
 
     # 2) comments — parallel fetch, batch write
     all_comments = []
 
-    def _fetch_one(post):
+    def _fetch_one(post: dict) -> list[dict]:
         return fetch_comments(post["id"], limit=comment_limit, reddit=reddit)
 
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
         futures = {pool.submit(_fetch_one, post): post for post in posts_list}
         for future in tqdm(as_completed(futures), total=len(futures), desc="Fetching comments"):
-            cmts = future.result()
+            post = futures[future]
+            try:
+                cmts = future.result()
+            except Exception as exc:
+                logging.warning("Failed to fetch comments for post %s: %s", post["id"], exc)
+                skipped += 1
+                continue
             if cmts:
                 all_comments.extend(cmts)
                 total_comments += len(cmts)
@@ -62,10 +70,12 @@ def run_collection(days: int, post_limit: int = 60, comment_limit: int = 40):
 
     write_jsonl(COMMENTS_PATH, all_comments)
 
-    print(
-        f"[SUMMARY] Posts: {len(posts_list)} | Comments: {total_comments} | Posts with 0 comments fetched: {skipped}")
-    print(f"[OUTPUT] Posts file: {POSTS_PATH}")
-    print(f"[OUTPUT] Comments file: {COMMENTS_PATH}")
+    logging.info(
+        "Posts: %d | Comments: %d | Posts with 0 comments fetched: %d",
+        len(posts_list), total_comments, skipped,
+    )
+    logging.info("Posts file: %s", POSTS_PATH)
+    logging.info("Comments file: %s", COMMENTS_PATH)
 
 
 if __name__ == "__main__":
