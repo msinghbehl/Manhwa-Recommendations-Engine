@@ -118,8 +118,6 @@ Create a `.env` file in the project root:
 ```env
 REDDIT_CLIENT_ID=your_client_id
 REDDIT_CLIENT_SECRET=your_client_secret
-REDDIT_USERNAME=your_reddit_username
-REDDIT_PASSWORD=your_reddit_password
 USER_AGENT=ManhwaRecBot/1.0 by u/your_reddit_username
 LOOKBACK_DAYS=7
 
@@ -127,7 +125,7 @@ LOOKBACK_DAYS=7
 ANTHROPIC_API_KEY=your_anthropic_key
 ```
 
-To get Reddit credentials: go to [reddit.com/prefs/apps](https://www.reddit.com/prefs/apps), click "create another app", choose **script**, and copy the client ID and secret.
+To get Reddit credentials: go to [reddit.com/prefs/apps](https://www.reddit.com/prefs/apps), click "create another app", choose **script**, and copy the client ID and secret. No Reddit username or password is required — the pipeline uses application-only OAuth to read public subreddits.
 
 ---
 
@@ -208,10 +206,7 @@ It also happens to solve a problem I actually have as someone who loves reading 
 
 ## Documentation
 
-| Document | Audience | What it covers |
-|---|---|---|
-| [TECH_FLUENCY.md](TECH_FLUENCY.md) | Junior engineers, new contributors | What the project does, plain-English design rationale, full pipeline walkthrough, setup, data formats, known quirks |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | Engineers modifying the codebase | Library choices and trade-offs, module internals, algorithms, data model, concurrency, security architecture, performance characteristics |
+Extended documentation (`TECH_FLUENCY.md` and `ARCHITECTURE.md`) exists for this project covering pipeline internals, design decisions, module deep-dives, and security architecture. These are kept as internal reference files and are not included in the public repo.
 
 ---
 
